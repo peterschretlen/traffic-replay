@@ -93,102 +93,102 @@ setInterval(function () {
 //from: https://stackoverflow.com/questions/16010915/parsing-huge-logfiles-in-node-js-read-in-line-by-line
 
 var s = fs.createReadStream(filename)
-    .pipe(es.split())
-    .pipe(es.mapSync(function(line){
+  .pipe(es.split())
+  .pipe(es.mapSync(function(line){
 
-        lineNr += 1;
-        if(lineNr % nConcurrent === 0){
-        	// pause the readstream
-        	s.pause();
+    lineNr += 1;
+    if(lineNr % nConcurrent === 0){
+    	// pause the readstream
+    	s.pause();
 	}
 
-        //parse the json
-        //const obj = JSON.parse(line);
+    //parse the json
+    //const obj = JSON.parse(line);
 
-        //if(obj.parsedBody.originalQuery){ //refinement request
-        if(line.startsWith('{\"originalQuery')) { //refinement request
-            const lineNumber = lineNr;
-            const timestamp = moment().toISOString();
-            try {
-            rq.post(     
-                {   uri: `https://${cluster}/api/v1/search/refinements`
-		    , time: true
-                    , body: line
-		    , headers : { 'skip-caching' : 'true' }
-                }, (error, response, body) => {
+    //if(obj.parsedBody.originalQuery){ //refinement request
+    if(line.startsWith('{\"originalQuery')) { //refinement request
+      const lineNumber = lineNr;
+      const timestamp = moment().toISOString();
+      try {
+        rq.post(     
+          {   uri: `https://${cluster}/api/v1/search/refinements`
+          , time: true
+          , body: line
+          , headers : { 'skip-caching' : 'true' }
+        }, (error, response, body) => {
 
-                if(error){
-                 console.log(error);
-                 return;
-		}
+          if(error){
+           console.log(error);
+           return;
+         }
 
-		try{
-                  if(response.elapsedTime)  statResponseTimeRefinement.push( response.elapsedTime );
-                  if(response.elapsedTime)  statResponseTime.push( response.elapsedTime );
-	          if(lineNumber % 100 === 0 && response && response.statusCode) {
-        	    outlogfs.write(`${new Date()}: ${response.statusCode} ${lineNumber} refinement \n`)
-              	  }
-                  const outLine = `{  "ts" : "${timestamp}", "status" : ${response.statusCode || 0}, "time" : ${response.elapsedTime || 0}, "type" : "refinement" } \n`
-                  outfs.write(outLine);
-                } catch(err) {
-                  console.log(err)
-                }
+         try{
+          if(response.elapsedTime)  statResponseTimeRefinement.push( response.elapsedTime );
+          if(response.elapsedTime)  statResponseTime.push( response.elapsedTime );
+          if(lineNumber % 100 === 0 && response && response.statusCode) {
+           outlogfs.write(`${new Date()}: ${response.statusCode} ${lineNumber} refinement \n`)
+         }
+         const outLine = `{  "ts" : "${timestamp}", "status" : ${response.statusCode || 0}, "time" : ${response.elapsedTime || 0}, "type" : "refinement" } \n`
+         outfs.write(outLine);
+       } catch(err) {
+        console.log(err);
+      }
 
-            });
-            } catch(rqErr) {
-               console.log(rqErr)
-            }
+    });
+      } catch(rqErr) {
+       console.log(rqErr)
+     }
 
         } else { //search request
 
-            const lineNumber = lineNr;
-            const timestamp = moment().toISOString();
-            try {
+          const lineNumber = lineNr;
+          const timestamp = moment().toISOString();
+          try {
             rq.post(     
-                {   uri: 'https://${cluster}/api/v1/search'
-		    , time: true
-                    , body: line
-		    , headers : { 'skip-caching' : 'true' }
-                }, (error, response, body) => {
+              {   uri: `https://${cluster}/api/v1/search`
+              , time: true
+              , body: line
+              , headers : { 'skip-caching' : 'true' }
+            }, (error, response, body) => {
 
-                if(error){
-                 console.log(error);
-                 return;
-		}
+              if(error){
+               console.log(error);
+               return;
+             }
 
-		try {
-                  if(response.elapsedTime)  statResponseTimeSearch.push( response.elapsedTime );
-                  if(response.elapsedTime)  statResponseTime.push( response.elapsedTime );
-                  if(lineNumber % 100 === 0 && response && response.statusCode) {
-        	    outlogfs.write(`${new Date()}: ${response.statusCode} ${lineNumber} search \n`)
-                  }
-                  const outLine = `{  "ts" : "${timestamp}", "status" : ${response.statusCode || 0}, "time" : ${response.elapsedTime || 0}, "type" : "search" } \n`
-                  outfs.write(outLine);
-                } catch(err) {
-                  console.log(err);
-                }
+             try {
+              if(response.elapsedTime)  statResponseTimeSearch.push( response.elapsedTime );
+              if(response.elapsedTime)  statResponseTime.push( response.elapsedTime );
+              if(lineNumber % 100 === 0 && response && response.statusCode) {
+               outlogfs.write(`${new Date()}: ${response.statusCode} ${lineNumber} search \n`)
+             }
+             const outLine = `{  "ts" : "${timestamp}", "status" : ${response.statusCode || 0}, "time" : ${response.elapsedTime || 0}, "type" : "search" } \n`
+             outfs.write(outLine);
+           } catch(err) {
+            console.log(err);
+          }
 
-            });
-            } catch(rqErr) {
-               console.log(rqErr)
-            }
+        });
+          } catch(rqErr) {
+            console.log(rqErr);
+         }
 
-        }
+       }
 
 
-        if(lineNr % nConcurrent === 0){
+       if(lineNr % nConcurrent === 0){
             //add timeout to throttle?
             setTimeout(function () {
                 // resume the readstream, possibly from a callback
                 s.resume();
-            }, nDelay)
-        } 
+              }, nDelay)
+          } 
 
-    })
-    .on('error', function(err){
-        console.log(`Error while reading file. line# ${lineNr}`, err);
-    })
-    .on('end', function(){
-        outlogfs.write('Read entire file.')
-    })
+        })
+  .on('error', function(err){
+    console.log(`Error while reading file. line# ${lineNr}`, err);
+  })
+  .on('end', function(){
+    outlogfs.write('Read entire file.')
+  })
 );

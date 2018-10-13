@@ -1,1 +1,4 @@
 *.ldjson
+node_modules
+*.log
+*.tsv
