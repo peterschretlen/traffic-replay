@@ -53,16 +53,25 @@ const outlogfs = fs.createWriteStream(`playback_${nConcurrent}_${nDelay}_${times
 const outmetricfs = fs.createWriteStream(`playback_${nConcurrent}_${nDelay}_${timestamp}.tsv`, { flags: 'a' });
 
 let lineNr = 0;
-const statResponseTimeSearch = new Stats();
-const statResponseTimeRefinement = new Stats();
 const statResponseTime = new Stats();
+const statWait = new Stats();
+const statDNS = new Stats();
+const statTCP = new Stats();
+const statFirstByte = new Stats();
+const statDownload = new Stats();
+const statTotal = new Stats();
 
 const statsInterval = 5000;
 let timeElapsed = 0;
 
+const getMetricsLine = (name, srt) => {
+  let summary = `${timeElapsed}\t${name}\t${srt.length}\t${srt.length/(statsInterval/1000)}\t${srt.percentile(50).toFixed(1)}\t${srt.percentile(75).toFixed(1)}\t${srt.percentile(95).toFixed(1)}\t${srt.range()[0].toFixed(1)}\t${srt.range()[1].toFixed(1)}\n`;
+  return summary;
+}
+
+
 setInterval(function () {
   timeElapsed += statsInterval/1000;
-  let srt = statResponseTimeSearch;
   // stats
   // - timeElapsed
   // - type
@@ -73,24 +82,61 @@ setInterval(function () {
   // - perc95
   // - min
   // - max
-  let tsvSummary = `${timeElapsed}\tsrch\t${srt.length}\t${srt.length/(statsInterval/1000)}\t${srt.percentile(50)}\t${srt.percentile(75)}\t${srt.percentile(95)}\t${srt.range()[0]}\t${srt.range()[1]}\n`;
-  outmetricfs.write( tsvSummary );
-  statResponseTimeSearch.reset();
- 
-  srt = statResponseTimeRefinement;
-  tsvSummary = `${timeElapsed}\trefn\t${srt.length}\t${srt.length/(statsInterval/1000)}\t${srt.percentile(50)}\t${srt.percentile(75)}\t${srt.percentile(95)}\t${srt.range()[0]}\t${srt.range()[1]}\n`;
-  outmetricfs.write( tsvSummary );
-  statResponseTimeRefinement.reset();  
-
-  srt = statResponseTime;
-  tsvSummary = `${timeElapsed}\tallq\t${srt.length}\t${srt.length/(statsInterval/1000)}\t${srt.percentile(50)}\t${srt.percentile(75)}\t${srt.percentile(95)}\t${srt.range()[0]}\t${srt.range()[1]}\n`;
+  let srt = statResponseTime;
+  let tsvSummary = getMetricsLine("tall",srt);
   outmetricfs.write( tsvSummary );
   statResponseTime.reset();  
+
+  srt = statWait;
+  tsvSummary = getMetricsLine("twait",srt);
+  outmetricfs.write( tsvSummary );
+  statWait.reset();  
+
+  srt = statDNS;
+  tsvSummary = getMetricsLine("tdns",srt);
+  outmetricfs.write( tsvSummary );
+  statDNS.reset();  
+
+  srt = statTCP;
+  tsvSummary = getMetricsLine("ttcp",srt);
+  outmetricfs.write( tsvSummary );
+  statTCP.reset();  
+
+  srt = statFirstByte;
+  tsvSummary = getMetricsLine("t1stb",srt);
+  outmetricfs.write( tsvSummary );
+  statFirstByte.reset();  
+
+  srt = statDownload;
+  tsvSummary = getMetricsLine("tstdl",srt);
+  outmetricfs.write( tsvSummary );
+  statDownload.reset();  
+
+  srt = statTotal;
+  tsvSummary = getMetricsLine("ttot",srt);
+  outmetricfs.write( tsvSummary );
+  statTotal.reset();  
 
 }, 5000)
 
 
 //from: https://stackoverflow.com/questions/16010915/parsing-huge-logfiles-in-node-js-read-in-line-by-line
+
+const getTimings = (response) => {
+
+  if(response.elapsedTime)  statResponseTime.push( response.elapsedTime );
+
+  if(response.timingPhases){
+    statWait.push( response.timingPhases.wait )
+    statDNS.push( response.timingPhases.dns )
+    statTCP.push( response.timingPhases.tcp )
+    statFirstByte.push( response.timingPhases.firstByte )
+    statDownload.push( response.timingPhases.download )
+    statTotal.push( response.timingPhases.total )  
+  }
+
+
+} ;
 
 var s = fs.createReadStream(filename)
   .pipe(es.split())
@@ -123,8 +169,7 @@ var s = fs.createReadStream(filename)
          }
 
          try{
-          if(response.elapsedTime)  statResponseTimeRefinement.push( response.elapsedTime );
-          if(response.elapsedTime)  statResponseTime.push( response.elapsedTime );
+          getTimings(response);
           if(lineNumber % 100 === 0 && response && response.statusCode) {
            outlogfs.write(`${new Date()}: ${response.statusCode} ${lineNumber} refinement \n`)
          }
@@ -157,12 +202,12 @@ var s = fs.createReadStream(filename)
              }
 
              try {
-              if(response.elapsedTime)  statResponseTimeSearch.push( response.elapsedTime );
-              if(response.elapsedTime)  statResponseTime.push( response.elapsedTime );
+              getTimings(response);
               if(lineNumber % 100 === 0 && response && response.statusCode) {
                outlogfs.write(`${new Date()}: ${response.statusCode} ${lineNumber} search \n`)
              }
-             const outLine = `{  "ts" : "${timestamp}", "status" : ${response.statusCode || 0}, "time" : ${response.elapsedTime || 0}, "type" : "search" } \n`
+             const outLine = `{
+                  "ts" : "${timestamp}", "status" : ${response.statusCode || 0}, "time" : ${response.elapsedTime || 0}, "type" : "search" } \n`
              outfs.write(outLine);
            } catch(err) {
             console.log(err);
