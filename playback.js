@@ -146,94 +146,65 @@ var s = fs.createReadStream(filename)
     if(lineNr % nConcurrent === 0){
     	// pause the readstream
     	s.pause();
-	}
+    }
 
     //parse the json
-    //const obj = JSON.parse(line);
+    const obj = JSON.parse(line);
 
-    //if(obj.parsedBody.originalQuery){ //refinement request
-    if(line.startsWith('{\"originalQuery')) { //refinement request
-      const lineNumber = lineNr;
-      const timestamp = moment().toISOString();
-      try {
-        rq.post(     
-          {   uri: `https://${cluster}/api/v1/search/refinements`
-          , time: true
-          , body: line
-          , headers : { 'skip-caching' : 'true' }
-        }, (error, response, body) => {
+    const lineNumber = lineNr;
+    const timestamp = moment().toISOString();
 
-          if(error){
-           console.log(error);
-           return;
-         }
+    const requestConfig = {
+      method: obj.method,
+      time: true,
+      uri : `https://${cluster}${obj.path}`,
+      headers : { 'skip-caching' : 'true' }
+    }
 
-         try{
+    if(obj.method === "POST"){
+      requestConfig.body = obj.requestbody;
+    }
+
+    try {
+
+      rq( requestConfig, (error, response, body) => {
+
+        if(error){
+         console.log(error);
+         return;
+        }
+
+        try{
           getTimings(response);
           if(lineNumber % 100 === 0 && response && response.statusCode) {
-           outlogfs.write(`${new Date()}: ${response.statusCode} ${lineNumber} refinement \n`)
-         }
-         const outLine = `{  "ts" : "${timestamp}", "status" : ${response.statusCode || 0}, "time" : ${response.elapsedTime || 0}, "type" : "refinement" } \n`
-         outfs.write(outLine);
-       } catch(err) {
-        console.log(err);
-      }
-
-    });
-      } catch(rqErr) {
-       console.log(rqErr)
-     }
-
-        } else { //search request
-
-          const lineNumber = lineNr;
-          const timestamp = moment().toISOString();
-          try {
-            rq.post(     
-              {   uri: `https://${cluster}/api/v1/search`
-              , time: true
-              , body: line
-              , headers : { 'skip-caching' : 'true' }
-            }, (error, response, body) => {
-
-              if(error){
-               console.log(error);
-               return;
-             }
-
-             try {
-              getTimings(response);
-              if(lineNumber % 100 === 0 && response && response.statusCode) {
-               outlogfs.write(`${new Date()}: ${response.statusCode} ${lineNumber} search \n`)
-             }
-             const outLine = `{
-                  "ts" : "${timestamp}", "status" : ${response.statusCode || 0}, "time" : ${response.elapsedTime || 0}, "type" : "search" } \n`
-             outfs.write(outLine);
-           } catch(err) {
-            console.log(err);
+           outlogfs.write(`${new Date()}: ${response.statusCode} ${lineNumber} \n`)
           }
+          const outLine = `{  "ts" : "${timestamp}", "status" : ${response.statusCode || 0}, "time" : ${response.elapsedTime || 0}, "method" : ${obj.method}, "path": ${obj.path} } \n`
+          outfs.write(outLine);
+        } catch(err) {
+          console.log(err);
+        }
+      });
+    } catch(rqErr) {
+     console.log(rqErr)
+    }
 
-        });
-          } catch(rqErr) {
-            console.log(rqErr);
-         }
+    if(lineNr % nConcurrent === 0){
+      setTimeout(function () {
+          s.resume();
+        }, nDelay)
+    } 
 
-       }
-
-
-       if(lineNr % nConcurrent === 0){
-            //add timeout to throttle?
-            setTimeout(function () {
-                // resume the readstream, possibly from a callback
-                s.resume();
-              }, nDelay)
-          } 
-
-        })
+  })
   .on('error', function(err){
     console.log(`Error while reading file. line# ${lineNr}`, err);
   })
   .on('end', function(){
-    outlogfs.write('Read entire file.')
+    outlogfs.write('Read entire file.');
+    //give any outstanding requests 10 seconds to complete
+    setTimeout(function () {
+        outlogfs.write('Exiting');
+        process.exit(0);
+      }, 10000)
   })
 );
